@@ -1,8 +1,8 @@
 # runbook
 
-An in terminal terminal interface for running commands with context.
+A terminal UI for running shell commands in context.
 
-The idea is to provide a modern and intuitive way to run and manage commands that you frequently execute. 
+The idea is to provide a modern and intuitive way to run and manage shell commands that you frequently execute. 
 It is especially useful for system administrators, developers, and anyone who spends a lot of time in the terminal.
 
 ## getting started
@@ -12,7 +12,6 @@ It is especially useful for system administrators, developers, and anyone who sp
 ```
 
 ![Runbook Screenshot](./image.png)
-
 
 ## development
 
