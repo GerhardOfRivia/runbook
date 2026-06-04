@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -58,6 +59,8 @@ var (
 type MsgCellExecuted struct {
 	CellIndex int
 	Outputs   []Output
+	StartTime time.Time
+	EndTime   time.Time
 	Err       error
 }
 
@@ -144,10 +147,12 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Execute in background
 				return m, func() tea.Msg {
-					outputs, err := RunCodeCell(codeStr)
+					outputs, startTime, endTime, err := RunCodeCell(codeStr)
 					return MsgCellExecuted{
 						CellIndex: m.activeCellIndex,
 						Outputs:   outputs,
+						StartTime: startTime,
+						EndTime:   endTime,
 						Err:       err,
 					}
 				}
@@ -173,12 +178,21 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.notebook.Cells[idx].ExecutionCount = &m.nextExecutionCount
 		m.nextExecutionCount++
 
+		if m.notebook.Cells[idx].Metadata == nil {
+			m.notebook.Cells[idx].Metadata = make(map[string]interface{})
+		}
+		m.notebook.Cells[idx].Metadata["start_time"] = msg.StartTime.Format(time.RFC3339Nano)
+		m.notebook.Cells[idx].Metadata["end_time"] = msg.EndTime.Format(time.RFC3339Nano)
+		duration := msg.EndTime.Sub(msg.StartTime)
+		m.notebook.Cells[idx].Metadata["duration_ms"] = duration.Milliseconds()
+
 		m.executingCellIndex = -1
 		m.unsavedChanges = true
+		durationStr := formatDuration(duration)
 		if msg.Err != nil {
-			m.statusMessage = fmt.Sprintf("Cell %d finished with error: %v", idx+1, msg.Err)
+			m.statusMessage = fmt.Sprintf("Cell %d finished with error in %s: %v", idx+1, durationStr, msg.Err)
 		} else {
-			m.statusMessage = fmt.Sprintf("Cell %d finished successfully", idx+1)
+			m.statusMessage = fmt.Sprintf("Cell %d finished successfully in %s", idx+1, durationStr)
 		}
 		return m, nil
 	}
@@ -296,6 +310,23 @@ func (m TuiModel) View() string {
 }
 
 func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) string {
+	var durationInfo string
+	if cell.Metadata != nil {
+		if startVal, ok := cell.Metadata["start_time"]; ok {
+			if endVal, ok := cell.Metadata["end_time"]; ok {
+				if startStr, ok := startVal.(string); ok {
+					if endStr, ok := endVal.(string); ok {
+						if startTime, err := time.Parse(time.RFC3339Nano, startStr); err == nil {
+							if endTime, err := time.Parse(time.RFC3339Nano, endStr); err == nil {
+								durationInfo = " (" + formatDuration(endTime.Sub(startTime)) + ")"
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// The prompt: e.g. In [1]: or In [*]: or In [ ]:
 	var prompt string
 	if isExecuting {
@@ -303,7 +334,7 @@ func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) strin
 	} else if cell.ExecutionCount == nil {
 		prompt = "In [ ]: "
 	} else {
-		prompt = fmt.Sprintf("In [%d]: ", *cell.ExecutionCount)
+		prompt = fmt.Sprintf("In [%d]%s: ", *cell.ExecutionCount, durationInfo)
 	}
 
 	// Indent code lines and add prompt prefix
@@ -391,4 +422,11 @@ func renderMarkdown(source string, width int) string {
 		}
 	}
 	return strings.Join(formatted, "\n")
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	return fmt.Sprintf("%.2fs", d.Seconds())
 }

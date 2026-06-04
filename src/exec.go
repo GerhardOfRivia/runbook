@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"os/exec"
+	"time"
 )
 
 // RunCodeCell executes the given code snippet in a bash shell and returns
-// the corresponding outputs in the Jupyter notebook format.
-func RunCodeCell(code string) ([]Output, error) {
+// the corresponding outputs, start time, end time, and error.
+func RunCodeCell(code string) ([]Output, time.Time, time.Time, error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 
 	// We run the command inside bash to support piping, env variables, etc.
@@ -15,7 +16,9 @@ func RunCodeCell(code string) ([]Output, error) {
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
+	startTime := time.Now()
 	err := cmd.Run()
+	endTime := time.Now()
 
 	var outputs []Output
 
@@ -49,5 +52,5 @@ func RunCodeCell(code string) ([]Output, error) {
 		})
 	}
 
-	return outputs, err
+	return outputs, startTime, endTime, err
 }

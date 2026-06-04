@@ -5,9 +5,17 @@ import (
 )
 
 func TestRunCodeCellSuccess(t *testing.T) {
-	outputs, err := RunCodeCell("echo 'Hello World'")
+	outputs, start, end, err := RunCodeCell("echo 'Hello World'")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if start.IsZero() || end.IsZero() {
+		t.Error("Expected non-zero start/end times")
+	}
+
+	if end.Before(start) {
+		t.Error("Expected end time to be after or equal to start time")
 	}
 
 	if len(outputs) != 1 {
@@ -25,7 +33,7 @@ func TestRunCodeCellSuccess(t *testing.T) {
 }
 
 func TestRunCodeCellFailure(t *testing.T) {
-	outputs, err := RunCodeCell("echo 'Failed' >&2 && exit 3")
+	outputs, _, _, err := RunCodeCell("echo 'Failed' >&2 && exit 3")
 	if err == nil {
 		t.Fatal("Expected error running failing command, got nil")
 	}
