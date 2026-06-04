@@ -11,7 +11,7 @@ It is especially useful for system administrators, developers, and anyone who sp
 ./runbook <file_name>.shbn
 ```
 
-![Runbook Screenshot](./image.png)
+![demo](./demo.gif)
 
 ## development
 
