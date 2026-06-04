@@ -5,15 +5,26 @@ An in terminal terminal interface for running commands with context.
 The idea is to provide a modern and intuitive way to run and manage commands that you frequently execute. 
 It is especially useful for system administrators, developers, and anyone who spends a lot of time in the terminal.
 
-## Getting started
+## getting started
 
 ```bash
 ./runbook <file_name>.shbn
 ```
 
-## Examples
+![Runbook Screenshot](./image.png)
 
-> shbn files follow the same format as Jupyter Notebook. The official Jupyter Notebook format is defined with this JSON schema.
+
+## development
+
+```bash
+make build
+make test
+./runbook demo.shbn
+```
+
+## shbn file format
+
+shbn files follow the same format as Jupyter Notebook. See the official [Jupyter Notebook format](https://github.com/jupyter/nbformat) defined with this JSON schema.
 
 ```json
 {
@@ -52,14 +63,6 @@ It is especially useful for system administrators, developers, and anyone who sp
 }
 ```
 
-## development
-
-```bash
-make build
-make test
-./runbook demo.shbn
-```
-
 ## Useful resources
 
-- [Jupyter Notebook format](https://github.com/jupyter/nbformat)
+- https://github.com/jupyter/nbformat
