@@ -1,0 +1,61 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "execution_count": null,
+      "metadata": {},
+      "source": [
+        "# Welcome to Runbook!\n",
+        "This is a markdown cell explaining how to use the TUI runbook application."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 2,
+      "metadata": {},
+      "source": [
+        "echo 'Running a bash command...'\n",
+        "echo \"Current user: $(whoami)\"\n",
+        "echo \"Current directory: $(pwd)\""
+      ],
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Running a bash command...\nCurrent user: g\nCurrent directory: /home/g/git/runbook\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "execution_count": null,
+      "metadata": {},
+      "source": [
+        "## Second section\n",
+        "Below is a command that lists the contents of the current directory."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 3,
+      "metadata": {},
+      "source": [
+        "ls -la"
+      ],
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "total 4668\ndrwxrwxr-x  4 g g    4096 Jun  4 12:36 .\ndrwxrwxr-x 19 g g    4096 Jun  4 12:03 ..\ndrwxrwxr-x  8 g g    4096 Jun  4 12:36 .git\n-rw-rw-r--  1 g g     585 Jun  4 12:28 .gitignore\n-rw-rw-r--  1 g g    1286 Jun  4 12:25 go.mod\n-rw-rw-r--  1 g g    4451 Jun  4 12:25 go.sum\n-rw-rw-r--  1 g g    1074 Jun  4 12:03 LICENSE\n-rw-r--r--  1 g g     267 Jun  4 12:35 Makefile\n-rw-rw-r--  1 g g    1290 Jun  4 12:36 README.md\n-rwxrwxr-x  1 g g 4733936 Jun  4 12:36 runbook\ndrwxrwxr-x  2 g g    4096 Jun  4 12:31 src\n"
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {},
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
