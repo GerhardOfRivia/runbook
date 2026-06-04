@@ -1,0 +1,56 @@
+name: Runbook Build & Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+
+      - name: Run Tests
+        run: make test
+
+      - name: Build Binary
+        run: make build
+
+      - name: Upload PR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: runbook-binary
+          path: runbook
+
+      - name: Create or Update Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing 'latest' release and tag if they exist
+          gh release delete latest --yes || true
+          git push origin :refs/tags/latest || true
+          
+          # Force create and push the 'latest' tag
+          git tag -f latest
+          git push origin latest -f
+          
+          # Create the release and upload the binary
+          gh release create latest ./runbook \
+            --title "Latest Runbook Build" \
+            --notes "Automated build from commit ${GITHUB_SHA} on main branch." \
+            --prerelease
