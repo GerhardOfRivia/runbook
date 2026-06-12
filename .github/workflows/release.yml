@@ -69,9 +69,9 @@ jobs:
           git push origin ${{ env.VERSION }}
           
           gh release create ${{ env.SEMVER }} ./runbook-${{ matrix.goos }}-${{ matrix.goarch }} \
-            --title "runbook ${{ env.SEMVER }}" \
+            --title "runbook ${{ env.SEMVER }} ${{ matrix.goos }} ${{ matrix.goarch }}" \
             --notes "Automated build of version ${{ env.SEMVER }}"
 
           gh release create latest ./runbook-${{ matrix.goos }}-${{ matrix.goarch }} \
-            --title "runbook ${{ env.SEMVER }}" \
+            --title "runbook ${{ env.VERSION }} ${{ matrix.goos }} ${{ matrix.goarch }}" \
             --notes "Automated build of version ${{ env.VERSION }}"
