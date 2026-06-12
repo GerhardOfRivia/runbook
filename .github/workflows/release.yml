@@ -26,7 +26,7 @@ jobs:
 
       - name: Determine Version
         run: |
-          echo "VERSION=$(grep ^VERSION Makefile | cut -d= -f2)-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "VERSION=$(grep ^SEMVER Makefile | awk '{print $3}')-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Run Tests
         run: make test
