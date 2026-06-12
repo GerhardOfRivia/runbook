@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest
 
     strategy:
@@ -30,12 +30,12 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.25'
+          go-version: "1.25"
 
       - name: Determine Version
         run: |
@@ -46,32 +46,81 @@ jobs:
         run: make test
 
       - name: Build Binary
-        run: make build CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} VERSION=${{ env.VERSION }}
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          make build OUTPUT=dist/runbook-${GOOS}-${GOARCH} VERSION=${{ env.VERSION }}
 
-      - name: Upload Artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: runbook-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: runbook
+          path: dist/runbook-${{ matrix.goos }}-${{ matrix.goarch }}
 
-      - name: Create or Update Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v5
+
+      - name: Determine Version
+        run: |
+          echo "SEMVER=$(grep ^SEMVER Makefile | awk '{print $3}')" >> $GITHUB_ENV
+          echo "VERSION=$(grep ^SEMVER Makefile | awk '{print $3}')-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare Release Files
+        run: |
+          mkdir -p release
+
+          cp dist/runbook-linux-amd64/runbook-linux-amd64 release/
+          cp dist/runbook-linux-arm64/runbook-linux-arm64 release/
+          cp dist/runbook-darwin-amd64/runbook-darwin-amd64 release/
+          cp dist/runbook-darwin-arm64/runbook-darwin-arm64 release/
+
+          ls -lah release
+
+      - name: Create or Update latest Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Remove old latest release/tag if present
           gh release delete latest --yes || true
           git push origin :refs/tags/latest || true
-          
+
+          # Recreate latest tag
           git tag -f latest
           git push origin latest -f
 
-          git tag -f ${{ env.VERSION }}
-          git push origin ${{ env.VERSION }}
-          
-          gh release create ${{ env.SEMVER }} ./runbook-${{ matrix.goos }}-${{ matrix.goarch }} \
-            --title "runbook ${{ env.SEMVER }} ${{ matrix.goos }} ${{ matrix.goarch }}" \
-            --notes "Automated build of version ${{ env.SEMVER }}"
+          # Create latest release with all artifacts
+          gh release create latest release/* \
+            --title "Latest Build" \
+            --notes "Automated build from main (${GITHUB_SHA})"
 
-          gh release create latest ./runbook-${{ matrix.goos }}-${{ matrix.goarch }} \
-            --title "runbook ${{ env.VERSION }} ${{ matrix.goos }} ${{ matrix.goarch }}" \
-            --notes "Automated build of version ${{ env.VERSION }}"
+      - name: Create or Update Versioned Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create/update version tag
+          git tag -f "${SEMVER}"
+          git push origin "${SEMVER}" -f
+
+          # Remove existing release if it exists
+          gh release delete "${SEMVER}" --yes || true
+
+          # Create versioned release with all artifacts
+          gh release create "${SEMVER}" release/* \
+            --title "runbook ${SEMVER}" \
+            --notes "Automated release for version ${SEMVER}"
+

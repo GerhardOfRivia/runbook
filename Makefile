@@ -1,3 +1,4 @@
+OUTPUT ?= runbook
 SEMVER ?= 1.0.1
 VERSION := $(SEMVER)-dev
 LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
@@ -6,10 +7,24 @@ LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
 
 all: build
 
+build-linux-amd64:
+	@echo "Building runbook for Linux AMD64 with version $(VERSION)..."
+	go build $(LDFLAGS) -o $(OUTPUT)-linux-amd64 ./src
+
+build-linux-arm64:
+	@echo "Building runbook for Linux ARM64 with version $(VERSION)..."
+	go build $(LDFLAGS) -o $(OUTPUT)-linux-arm64 ./src
+
+build-darwin-amd64:
+	@echo "Building runbook for Darwin AMD64 with version $(VERSION)..."
+	go build $(LDFLAGS) -o $(OUTPUT)-darwin-amd64 ./src
+
+build-darwin-arm64:
+	@echo "Building runbook for Darwin ARM64 with version $(VERSION)..."
+	go build $(LDFLAGS) -o $(OUTPUT)-darwin-arm64 ./src
+
 build:
-	@echo "Building runbook with version $(VERSION)..."
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o runbook ./src
-	@echo "Build successful! Run with: ./runbook <file_name>.shbn"
+	go build $(LDFLAGS) -o $(OUTPUT) ./src
 
 test:
 	@echo "Running tests..."
@@ -17,4 +32,4 @@ test:
 
 clean:
 	@echo "Cleaning up..."
-	rm -f runbook
+	rm -f $(OUTPUT)
