@@ -156,3 +156,165 @@ func TestLoadSaveNotebook(t *testing.T) {
 		t.Errorf("Expected output text 'Testing string source\\n', got %q", nbReloaded.Cells[0].Outputs[0].Text.String())
 	}
 }
+
+func TestConversions(t *testing.T) {
+	nb := &Notebook{
+		Cells: []Cell{
+			{
+				CellType: "markdown",
+				Source:   StringOrArray{"# Welcome to Runbook!\n", "This is a markdown cell explaining how to use it."},
+				Metadata: make(map[string]interface{}),
+			},
+			{
+				CellType: "code",
+				Source:   StringOrArray{"echo 'Running a bash command...'\n", "ls -la"},
+				Metadata: make(map[string]interface{}),
+			},
+		},
+		Metadata:      make(map[string]interface{}),
+		NbFormat:      4,
+		NbFormatMinor: 5,
+	}
+
+	// Test ExportToMarkdown
+	mdOutput := ExportToMarkdown(nb)
+	expectedMd := `# Welcome to Runbook!
+This is a markdown cell explaining how to use it.
+
+` + "```" + `bash
+echo 'Running a bash command...'
+ls -la
+` + "```" + `
+
+`
+	if mdOutput != expectedMd {
+		t.Errorf("ExportToMarkdown output mismatch.\nExpected:\n%q\nGot:\n%q", expectedMd, mdOutput)
+	}
+
+	// Test ExportToShell
+	shOutput := ExportToShell(nb)
+	expectedSh := `#!/bin/sh
+
+# # Welcome to Runbook!
+# This is a markdown cell explaining how to use it.
+
+echo 'Running a bash command...'
+ls -la
+
+`
+	if shOutput != expectedSh {
+		t.Errorf("ExportToShell output mismatch.\nExpected:\n%q\nGot:\n%q", expectedSh, shOutput)
+	}
+
+	// Test CompileFromMarkdown
+	compiledNb, err := CompileFromMarkdown(expectedMd)
+	if err != nil {
+		t.Fatalf("CompileFromMarkdown failed: %v", err)
+	}
+
+	if len(compiledNb.Cells) != 2 {
+		t.Fatalf("Expected 2 cells, got %d", len(compiledNb.Cells))
+	}
+
+	c1 := compiledNb.Cells[0]
+	if c1.CellType != "markdown" {
+		t.Errorf("Expected cell 1 to be markdown, got %s", c1.CellType)
+	}
+	expectedC1Source := "# Welcome to Runbook!\nThis is a markdown cell explaining how to use it."
+	if c1.Source.String() != expectedC1Source {
+		t.Errorf("Cell 1 source mismatch. Expected %q, got %q", expectedC1Source, c1.Source.String())
+	}
+
+	c2 := compiledNb.Cells[1]
+	if c2.CellType != "code" {
+		t.Errorf("Expected cell 2 to be code, got %s", c2.CellType)
+	}
+	expectedC2Source := "echo 'Running a bash command...'\nls -la"
+	if c2.Source.String() != expectedC2Source {
+		t.Errorf("Cell 2 source mismatch. Expected %q, got %q", expectedC2Source, c2.Source.String())
+	}
+}
+
+func TestParseArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    Config
+		wantErr bool
+	}{
+		{
+			name: "export to md",
+			args: []string{"runbook", "--to-md", "file.shbn"},
+			want: Config{
+				ToMd:     true,
+				FilePath: "file.shbn",
+			},
+			wantErr: false,
+		},
+		{
+			name: "export to sh",
+			args: []string{"runbook", "--to-sh", "file.shbn"},
+			want: Config{
+				ToSh:     true,
+				FilePath: "file.shbn",
+			},
+			wantErr: false,
+		},
+		{
+			name: "compile from md",
+			args: []string{"runbook", "--from-md", "file.md"},
+			want: Config{
+				FromMd:   true,
+				FilePath: "file.md",
+			},
+			wantErr: false,
+		},
+		{
+			name: "no flags default TUI",
+			args: []string{"runbook", "file.shbn"},
+			want: Config{
+				FilePath: "file.shbn",
+			},
+			wantErr: false,
+		},
+		{
+			name:    "missing file path",
+			args:    []string{"runbook"},
+			want:    Config{},
+			wantErr: true,
+		},
+		{
+			name:    "unknown flag",
+			args:    []string{"runbook", "--invalid"},
+			want:    Config{},
+			wantErr: true,
+		},
+		{
+			name:    "multiple files",
+			args:    []string{"runbook", "file1.shbn", "file2.shbn"},
+			want:    Config{},
+			wantErr: true,
+		},
+		{
+			name:    "mutually exclusive flags",
+			args:    []string{"runbook", "--to-md", "--to-sh", "file.shbn"},
+			want:    Config{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseArgs(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseArgs() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if got.ToMd != tt.want.ToMd || got.ToSh != tt.want.ToSh || got.FromMd != tt.want.FromMd || got.Version != tt.want.Version || got.FilePath != tt.want.FilePath {
+					t.Errorf("ParseArgs() = %+v, want %+v", got, tt.want)
+				}
+			}
+		})
+	}
+}
