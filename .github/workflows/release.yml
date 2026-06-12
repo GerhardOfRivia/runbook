@@ -40,7 +40,7 @@ jobs:
       - name: Determine Version
         run: |
           echo "SEMVER=$(grep ^SEMVER Makefile | awk '{print $3}')" >> $GITHUB_ENV
-          echo "VERSION=${{ env.SEMVER }}-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "VERSION=$(grep ^SEMVER Makefile | awk '{print $3}')-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Run Tests
         run: make test
