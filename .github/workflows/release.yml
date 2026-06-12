@@ -15,6 +15,19 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -22,22 +35,23 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.x'
+          go-version: '1.25'
 
       - name: Determine Version
         run: |
-          echo "VERSION=$(grep ^SEMVER Makefile | awk '{print $3}')-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "SEMVER=$(grep ^SEMVER Makefile | awk '{print $3}')" >> $GITHUB_ENV
+          echo "VERSION=${{ env.SEMVER }}-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Run Tests
         run: make test
 
       - name: Build Binary
-        run: make build VERSION=${{ env.VERSION }}
+        run: make build CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} VERSION=${{ env.VERSION }}
 
-      - name: Upload PR Artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: runbook-binary
+          name: runbook-${{ matrix.goos }}-${{ matrix.goarch }}
           path: runbook
 
       - name: Create or Update Release
@@ -45,20 +59,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Delete existing 'latest' release and tag if they exist
           gh release delete latest --yes || true
           git push origin :refs/tags/latest || true
           
-          # Force create and push the 'latest' tag
           git tag -f latest
           git push origin latest -f
 
-          # Create and push version tag
           git tag -f ${{ env.VERSION }}
           git push origin ${{ env.VERSION }}
           
-          # Create the release and upload the binary
-          gh release create latest ./runbook \
-            --title "Latest Runbook Build (${{ env.VERSION }})" \
-            --notes "Automated build of version ${{ env.VERSION }} from commit ${GITHUB_SHA} on main branch." \
-            --prerelease
+          gh release create ${{ env.SEMVER }} ./runbook-${{ matrix.goos }}-${{ matrix.goarch }} \
+            --title "runbook ${{ env.SEMVER }}" \
+            --notes "Automated build of version ${{ env.SEMVER }}"
+
+          gh release create latest ./runbook-${{ matrix.goos }}-${{ matrix.goarch }} \
+            --title "runbook ${{ env.SEMVER }}" \
+            --notes "Automated build of version ${{ env.VERSION }}"
