@@ -13,55 +13,31 @@ It is especially useful for system administrators, developers, and anyone who sp
 
 ![demo](./demo.gif)
 
+Make a runbook from markdown file
+
+```bash
+./runbook --from-md <file_name>.md > <notebook_name>.shbn
+```
+
+Convert runbook to markdown file
+
+```bash
+./runbook --to-md <file_name>.shbn > <notebook_name>.md
+```
+
+Make a shell script from runbook
+
+```bash
+./runbook --to-sh <file_name>.shbn > <script_name>.sh
+```
+
 ## development
 
 ```bash
 make build
 make test
-./runbook demo.shbn
 ```
 
 ## shbn file format
 
 shbn files follow the same format as Jupyter Notebook. See the official [Jupyter Notebook format](https://github.com/jupyter/nbformat) defined with this JSON schema.
-
-```json
-{
-  "cells": [
-    {
-      "cell_type": "code",
-      "execution_count": 1,
-      "id": "a1b2c3d4",
-      "metadata": {},
-      "source": [
-        "echo 'Hello, World!'"
-      ],
-      "outputs": [
-        {
-          "output_type": "stream",
-          "name": "stdout",
-          "text": [
-            "Hello, World!\n"
-          ]
-        }
-      ]
-    },
-    {
-      "cell_type": "markdown",
-      "id": "e5f6g7h8",
-      "metadata": {},
-      "source": [
-        "# This is a Heading\n",
-        "This is descriptive text."
-      ]
-    }
-  ],
-  "metadata": {},
-  "nbformat": 4,
-  "nbformat_minor": 5
-}
-```
-
-## Useful resources
-
-- https://github.com/jupyter/nbformat
