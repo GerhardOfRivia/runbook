@@ -88,6 +88,7 @@ jobs:
           cp dist/runbook-linux-arm64/runbook-linux-arm64 release/
           cp dist/runbook-darwin-amd64/runbook-darwin-amd64 release/
           cp dist/runbook-darwin-arm64/runbook-darwin-arm64 release/
+          sha256sum release/* > release/checksums.txt
 
           ls -lah release
 

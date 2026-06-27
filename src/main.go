@@ -137,9 +137,9 @@ func main() {
 }
 
 func printUsage(version string) {
-	fmt.Printf("Usage: runbook (%s) [options] [file_name.shbn]\n", version)
-	fmt.Println("  runbook <file_name>.shbn              # Run TUI for notebook")
-	fmt.Println("  runbook --to-md <file_name>.shbn      # Export notebook to Markdown")
-	fmt.Println("  runbook --to-sh <file_name>.shbn      # Export notebook to Shell Script")
-	fmt.Println("  runbook --from-md <file_name>.md      # Compile Markdown to notebook JSON")
+	fmt.Printf("Usage: runbook (%s) [options] [file.(sh|ps)bn]\n", version)
+	fmt.Println("  runbook file.(sh|ps)bn              # Run TUI for notebook")
+	fmt.Println("  runbook --to-md file.(sh|ps)bn      # Export notebook to Markdown")
+	fmt.Println("  runbook --to-sh file.(sh|ps)bn      # Export notebook to Shell Script")
+	fmt.Println("  runbook --from-md file.md           # Compile Markdown to notebook JSON")
 }

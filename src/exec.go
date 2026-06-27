@@ -3,16 +3,41 @@ package main
 import (
 	"bytes"
 	"os/exec"
+	"strings"
 	"time"
 )
 
-// RunCodeCell executes the given code snippet in a bash shell and returns
+// RunCodeCell executes the given code snippet in a bash shell or PowerShell and returns
 // the corresponding outputs, start time, end time, and error.
-func RunCodeCell(code string) ([]Output, time.Time, time.Time, error) {
+func RunCodeCell(code string, language string, password string) ([]Output, time.Time, time.Time, error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	// We run the command inside bash to support piping, env variables, etc.
-	cmd := exec.Command("bash", "-c", code)
+	var cmd *exec.Cmd
+	if language == "powershell" || language == "pwsh" {
+		exe := "pwsh"
+		if _, err := exec.LookPath("pwsh"); err != nil {
+			if _, err2 := exec.LookPath("powershell"); err2 == nil {
+				exe = "powershell"
+			}
+		}
+		cmd = exec.Command(exe, "-NoProfile", "-NonInteractive", "-Command", code)
+	} else {
+		// Default to bash
+		if password != "" {
+			wrappedCode := `sudo() { command sudo -S "$@"; }; ` + code
+			cmd = exec.Command("bash", "-c", wrappedCode)
+			stdinPipe, err := cmd.StdinPipe()
+			if err == nil {
+				go func() {
+					defer stdinPipe.Close()
+					stdinPipe.Write([]byte(password + "\n"))
+				}()
+			}
+		} else {
+			cmd = exec.Command("bash", "-c", code)
+		}
+	}
+
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
@@ -34,6 +59,9 @@ func RunCodeCell(code string) ([]Output, time.Time, time.Time, error) {
 
 	// Capture stderr stream
 	stderrStr := stderrBuf.String()
+	if password != "" {
+		stderrStr = cleanStderr(stderrStr)
+	}
 	if len(stderrStr) > 0 {
 		outputs = append(outputs, Output{
 			OutputType: "stream",
@@ -53,4 +81,16 @@ func RunCodeCell(code string) ([]Output, time.Time, time.Time, error) {
 	}
 
 	return outputs, startTime, endTime, err
+}
+
+func cleanStderr(stderr string) string {
+	lines := strings.Split(stderr, "\n")
+	var clean []string
+	for _, line := range lines {
+		if strings.Contains(line, "[sudo] password for") {
+			continue
+		}
+		clean = append(clean, line)
+	}
+	return strings.Join(clean, "\n")
 }

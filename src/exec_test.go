@@ -1,11 +1,12 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
 func TestRunCodeCellSuccess(t *testing.T) {
-	outputs, start, end, err := RunCodeCell("echo 'Hello World'")
+	outputs, start, end, err := RunCodeCell("echo 'Hello World'", "bash", "")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -33,7 +34,7 @@ func TestRunCodeCellSuccess(t *testing.T) {
 }
 
 func TestRunCodeCellFailure(t *testing.T) {
-	outputs, _, _, err := RunCodeCell("echo 'Failed' >&2 && exit 3")
+	outputs, _, _, err := RunCodeCell("echo 'Failed' >&2 && exit 3", "bash", "")
 	if err == nil {
 		t.Fatal("Expected error running failing command, got nil")
 	}
@@ -57,5 +58,34 @@ func TestRunCodeCellFailure(t *testing.T) {
 	}
 	if errOut.EName != "ExitError" {
 		t.Errorf("Expected EName ExitError, got %q", errOut.EName)
+	}
+}
+
+func TestCleanStderr(t *testing.T) {
+	input := "[sudo] password for user:\nSome normal stderr message\n[sudo] password for user:\nAnother message"
+	got := cleanStderr(input)
+	want := "Some normal stderr message\nAnother message"
+	if got != want {
+		t.Errorf("cleanStderr() = %q, want %q", got, want)
+	}
+}
+
+func TestRunCodeCellPowerShell(t *testing.T) {
+	outputs, _, _, err := RunCodeCell("Write-Output 'Hello PowerShell'", "pwsh", "")
+	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "executable file not found") || strings.Contains(errStr, "no such file or directory") {
+			t.Skip("pwsh not installed, skipping PowerShell execution test")
+		} else {
+			t.Fatalf("Expected no error or missing executable error, got %v", err)
+		}
+	} else {
+		if len(outputs) != 1 {
+			t.Fatalf("Expected 1 output, got %d", len(outputs))
+		}
+		out := outputs[0]
+		if out.Text.String() != "Hello PowerShell\n" && out.Text.String() != "Hello PowerShell\r\n" {
+			t.Errorf("Unexpected output: %q", out.Text.String())
+		}
 	}
 }

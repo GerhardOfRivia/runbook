@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -53,6 +55,12 @@ var (
 			Background(borderColor).
 			Foreground(textColor).
 			Padding(0, 1)
+
+	sudoConfirmStatusStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#FFB86C")). // Orange background
+			Foreground(lipgloss.Color("#000000")). // Black text
+			Bold(true).
+			Padding(0, 1)
 )
 
 // MsgCellExecuted is sent when a cell finishes executing.
@@ -66,17 +74,21 @@ type MsgCellExecuted struct {
 
 // TuiModel is the Bubble Tea model for the terminal user interface.
 type TuiModel struct {
-	notebook            *Notebook
-	filepath            string
-	activeCellIndex     int
-	scrollLineOffset    int
-	terminalWidth       int
-	terminalHeight      int
-	executingCellIndex  int
-	nextExecutionCount  int
-	err                 error
-	statusMessage       string
-	unsavedChanges      bool
+	notebook                *Notebook
+	filepath                string
+	activeCellIndex         int
+	scrollLineOffset        int
+	terminalWidth           int
+	terminalHeight          int
+	executingCellIndex      int
+	confirmingSudoCellIndex int
+	enteringPasswordCellIdx int
+	passwordInput           textinput.Model
+	sudoPassword            string
+	nextExecutionCount      int
+	err                     error
+	statusMessage           string
+	unsavedChanges          bool
 }
 
 // NewTuiModel initializes a new TuiModel.
@@ -89,16 +101,24 @@ func NewTuiModel(nb *Notebook, filepath string) *TuiModel {
 		}
 	}
 
+	ti := textinput.New()
+	ti.Placeholder = "Enter sudo password"
+	ti.EchoMode = textinput.EchoPassword
+	ti.Focus()
+
 	return &TuiModel{
-		notebook:           nb,
-		filepath:           filepath,
-		activeCellIndex:    0,
-		scrollLineOffset:   0,
-		terminalWidth:      80, // Safe default before size msg
-		terminalHeight:     24, // Safe default before size msg
-		executingCellIndex: -1, // -1 means none running
-		nextExecutionCount: maxCount + 1,
-		statusMessage:      "Ready",
+		notebook:                nb,
+		filepath:                filepath,
+		activeCellIndex:         0,
+		scrollLineOffset:        0,
+		terminalWidth:           80, // Safe default before size msg
+		terminalHeight:          24, // Safe default before size msg
+		executingCellIndex:      -1, // -1 means none running
+		confirmingSudoCellIndex: -1,
+		enteringPasswordCellIdx: -1,
+		passwordInput:           ti,
+		nextExecutionCount:      maxCount + 1,
+		statusMessage:           "Ready",
 	}
 }
 
@@ -116,6 +136,92 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.enteringPasswordCellIdx != -1 {
+			switch msg.String() {
+			case "enter":
+				m.sudoPassword = m.passwordInput.Value()
+				m.passwordInput.SetValue("")
+				idx := m.enteringPasswordCellIdx
+				m.enteringPasswordCellIdx = -1
+				m.executingCellIndex = idx
+				m.statusMessage = fmt.Sprintf("Running cell %d...", idx+1)
+				cell := m.notebook.Cells[idx]
+				codeStr := cell.Source.String()
+				lang := "bash"
+				if cell.Metadata != nil {
+					if l, ok := cell.Metadata["language"].(string); ok && l != "" {
+						lang = l
+					}
+				}
+
+				return m, func() tea.Msg {
+					outputs, startTime, endTime, err := RunCodeCell(codeStr, lang, m.sudoPassword)
+					return MsgCellExecuted{
+						CellIndex: idx,
+						Outputs:   outputs,
+						StartTime: startTime,
+						EndTime:   endTime,
+						Err:       err,
+					}
+				}
+			case "esc", "ctrl+c":
+				m.enteringPasswordCellIdx = -1
+				m.passwordInput.SetValue("")
+				m.statusMessage = "Execution cancelled."
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.passwordInput, cmd = m.passwordInput.Update(msg)
+				return m, cmd
+			}
+		}
+
+		if m.confirmingSudoCellIndex != -1 {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "y", "Y":
+				idx := m.confirmingSudoCellIndex
+				m.confirmingSudoCellIndex = -1
+
+				if m.sudoPassword == "" {
+					m.enteringPasswordCellIdx = idx
+					m.passwordInput.Focus()
+					m.statusMessage = "Please enter sudo password:"
+					return m, nil
+				}
+
+				m.executingCellIndex = idx
+				m.statusMessage = fmt.Sprintf("Running cell %d...", idx+1)
+				cell := m.notebook.Cells[idx]
+				codeStr := cell.Source.String()
+				lang := "bash"
+				if cell.Metadata != nil {
+					if l, ok := cell.Metadata["language"].(string); ok && l != "" {
+						lang = l
+					}
+				}
+
+				// Execute in background
+				return m, func() tea.Msg {
+					outputs, startTime, endTime, err := RunCodeCell(codeStr, lang, m.sudoPassword)
+					return MsgCellExecuted{
+						CellIndex: idx,
+						Outputs:   outputs,
+						StartTime: startTime,
+						EndTime:   endTime,
+						Err:       err,
+					}
+				}
+			case "n", "N", "esc":
+				m.confirmingSudoCellIndex = -1
+				m.statusMessage = "Execution cancelled."
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -141,13 +247,26 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			cell := m.notebook.Cells[m.activeCellIndex]
 			if cell.CellType == "code" {
+				codeStr := cell.Source.String()
+				lang := "bash"
+				if cell.Metadata != nil {
+					if l, ok := cell.Metadata["language"].(string); ok && l != "" {
+						lang = l
+					}
+				}
+
+				if hasSudo(codeStr) && lang != "powershell" && lang != "pwsh" {
+					m.confirmingSudoCellIndex = m.activeCellIndex
+					m.statusMessage = fmt.Sprintf("Cell %d contains sudo. Run anyway? (y/n)", m.activeCellIndex+1)
+					return m, nil
+				}
+
 				m.executingCellIndex = m.activeCellIndex
 				m.statusMessage = fmt.Sprintf("Running cell %d...", m.activeCellIndex+1)
-				codeStr := cell.Source.String()
 
 				// Execute in background
 				return m, func() tea.Msg {
-					outputs, startTime, endTime, err := RunCodeCell(codeStr)
+					outputs, startTime, endTime, err := RunCodeCell(codeStr, lang, "")
 					return MsgCellExecuted{
 						CellIndex: m.activeCellIndex,
 						Outputs:   outputs,
@@ -297,10 +416,23 @@ func (m TuiModel) View() string {
 	// Status Line
 	cellInfo := fmt.Sprintf("Cell %d of %d", m.activeCellIndex+1, len(m.notebook.Cells))
 	statusText := fmt.Sprintf(" %-50s %29s", m.statusMessage, cellInfo)
-	statusBar := statusBarStyle.Width(m.terminalWidth).Render(statusText)
+	var statusBar string
+	if m.enteringPasswordCellIdx != -1 {
+		promptText := fmt.Sprintf(" Sudo Password: %s", m.passwordInput.View())
+		statusBar = sudoConfirmStatusStyle.Width(m.terminalWidth).Render(promptText)
+	} else if m.confirmingSudoCellIndex != -1 {
+		statusBar = sudoConfirmStatusStyle.Width(m.terminalWidth).Render(statusText)
+	} else {
+		statusBar = statusBarStyle.Width(m.terminalWidth).Render(statusText)
+	}
 
 	// Help Line
 	helpText := " [j/k/↑/↓] Navigate • [Enter/r] Run • [s/ctrl+s] Save • [q] Quit"
+	if m.enteringPasswordCellIdx != -1 {
+		helpText = " [Enter] Submit • [Esc] Cancel"
+	} else if m.confirmingSudoCellIndex != -1 {
+		helpText = " [y] Run command with sudo • [n/esc] Cancel • [q] Quit"
+	}
 	helpBar := lipgloss.NewStyle().
 		Foreground(subtleColor).
 		Width(m.terminalWidth).
@@ -327,14 +459,21 @@ func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) strin
 		}
 	}
 
-	// The prompt: e.g. In [1]: or In [*]: or In [ ]:
+	// The prompt: e.g. In [1] (bash): or In [*] (bash):
+	lang := "bash"
+	if cell.Metadata != nil {
+		if l, ok := cell.Metadata["language"].(string); ok && l != "" {
+			lang = l
+		}
+	}
+
 	var prompt string
 	if isExecuting {
-		prompt = "In [*]: "
+		prompt = fmt.Sprintf("In [*] (%s): ", lang)
 	} else if cell.ExecutionCount == nil {
-		prompt = "In [ ]: "
+		prompt = fmt.Sprintf("In [ ] (%s): ", lang)
 	} else {
-		prompt = fmt.Sprintf("In [%d]%s: ", *cell.ExecutionCount, durationInfo)
+		prompt = fmt.Sprintf("In [%d] (%s)%s: ", *cell.ExecutionCount, lang, durationInfo)
 	}
 
 	// Indent code lines and add prompt prefix
@@ -429,4 +568,20 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 	return fmt.Sprintf("%.2fs", d.Seconds())
+}
+
+var sudoRegex = regexp.MustCompile(`\bsudo\b`)
+
+func hasSudo(code string) bool {
+	lines := strings.Split(code, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if sudoRegex.MatchString(trimmed) {
+			return true
+		}
+	}
+	return false
 }

@@ -2,65 +2,76 @@
   "cells": [
     {
       "cell_type": "markdown",
-      "execution_count": null,
-      "metadata": {},
       "source": [
         "# Welcome to Runbook!\n",
         "This is a markdown cell explaining how to use the TUI runbook application."
-      ]
+      ],
+      "metadata": {}
     },
     {
       "cell_type": "code",
-      "execution_count": 5,
-      "metadata": {
-        "duration_ms": 3,
-        "end_time": "2026-06-04T15:27:44.00838127-06:00",
-        "start_time": "2026-06-04T15:27:44.004716663-06:00"
-      },
       "source": [
         "echo 'Running a bash command...'\n",
         "echo \"Current user: $(whoami)\"\n",
         "echo \"Current directory: $(pwd)\""
       ],
-      "outputs": [
-        {
-          "output_type": "stream",
-          "name": "stdout",
-          "text": [
-            "Running a bash command...\nCurrent user: g\nCurrent directory: /home/g/git/runbook\n"
-          ]
+      "metadata": {
+        "duration_ms": 3,
+        "end_time": "2026-06-04T15:27:44.00838127-06:00",
+        "start_time": "2026-06-04T15:27:44.004716663-06:00",
+        "vscode": {
+          "languageId": "bash"
         }
-      ]
+      },
+      "execution_count": null,
+      "outputs": []
     },
     {
       "cell_type": "markdown",
-      "execution_count": null,
-      "metadata": {},
       "source": [
         "## Second section\n",
         "Below is a command that lists the contents of the current directory."
-      ]
+      ],
+      "metadata": {}
     },
     {
       "cell_type": "code",
-      "execution_count": 6,
-      "metadata": {
-        "duration_ms": 3,
-        "end_time": "2026-06-04T15:27:47.278169359-06:00",
-        "start_time": "2026-06-04T15:27:47.274629788-06:00"
-      },
       "source": [
         "ls -la"
       ],
-      "outputs": [
-        {
-          "output_type": "stream",
-          "name": "stdout",
-          "text": [
-            "total 4820\ndrwxrwxr-x  5 g g    4096 Jun  4 15:25 .\ndrwxrwxr-x 20 g g    4096 Jun  4 14:51 ..\n-rw-r--r--  1 g g    1866 Jun  4 12:37 demo.shbn\ndrwxrwxr-x  8 g g    4096 Jun  4 15:27 .git\ndrwxr-xr-x  3 g g    4096 Jun  4 13:24 .github\n-rw-rw-r--  1 g g     585 Jun  4 12:28 .gitignore\n-rw-rw-r--  1 g g    1286 Jun  4 12:25 go.mod\n-rw-rw-r--  1 g g    4451 Jun  4 12:25 go.sum\n-rw-rw-r--  1 g g  141892 Jun  4 13:45 image.png\n-rw-rw-r--  1 g g    1074 Jun  4 12:03 LICENSE\n-rw-r--r--  1 g g     267 Jun  4 12:35 Makefile\n-rw-rw-r--  1 g g    1339 Jun  4 13:48 README.md\n-rwxrwxr-x  1 g g 4738979 Jun  4 15:25 runbook\ndrwxrwxr-x  2 g g    4096 Jun  4 12:38 src\n"
-          ]
+      "metadata": {
+        "duration_ms": 3,
+        "end_time": "2026-06-04T15:27:47.278169359-06:00",
+        "start_time": "2026-06-04T15:27:47.274629788-06:00",
+        "vscode": {
+          "languageId": "bash"
         }
-      ]
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Running a Sudo command"
+      ],
+      "metadata": {}
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "sudo uname -a"
+      ],
+      "metadata": {
+        "duration_ms": 43,
+        "end_time": "2026-06-27T09:54:00.069804736-06:00",
+        "start_time": "2026-06-27T09:54:00.026568057-06:00",
+        "vscode": {
+          "languageId": "bash"
+        }
+      },
+      "execution_count": null,
+      "outputs": []
     }
   ],
   "metadata": {},
