@@ -73,12 +73,15 @@ get_target() {
     case "$OS" in
         linux)
             case "$ARCH" in
-                x86_64)  TARGET="x86_64-unknown-linux-musl";;
-                aarch64) TARGET="aarch64-unknown-linux-gnu";;
+                x86_64)  TARGET="linux-amd64";;
+                aarch64) TARGET="linux-arm64";;
             esac
             ;;
         darwin)
-            TARGET="${ARCH}-apple-darwin"
+            case "$ARCH" in
+                x86_64)  TARGET="darwin-amd64";;
+                aarch64) TARGET="darwin-arm64";;
+            esac
             ;;
     esac
 }
@@ -89,12 +92,12 @@ install() {
     info "Target: $TARGET"
     info "Version: $VERSION"
 
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}-${TARGET}.tar.gz"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}-${TARGET}"
     CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
     TEMP_DIR=$(mktemp -d)
-    ARCHIVE="${TEMP_DIR}/${BINARY_NAME}.tar.gz"
+    ARCHIVE="${TEMP_DIR}/${BINARY_NAME}-${TARGET}"
     CHECKSUMS="${TEMP_DIR}/checksums.txt"
-    ASSET_NAME="${BINARY_NAME}-${TARGET}.tar.gz"
+    ASSET_NAME="${BINARY_NAME}-${TARGET}"
 
     info "Downloading from: $DOWNLOAD_URL"
     if ! curl -fsSL "$DOWNLOAD_URL" -o "$ARCHIVE"; then
@@ -110,9 +113,9 @@ install() {
         warn "RUNBOOK_SKIP_CHECKSUM=1 set — SKIPPING checksum verification (NOT RECOMMENDED)"
     else
         info "Verifying SHA-256 checksum..."
-        EXPECTED=$(grep "[[:space:]]${ASSET_NAME}\$" "$CHECKSUMS" | awk '{print $1}')
+        EXPECTED=$(grep "[[:space:]]release/${ASSET_NAME}\$" "$CHECKSUMS" | awk '{print $1}')
         if [ -z "$EXPECTED" ]; then
-            error "checksum for ${ASSET_NAME} not found in checksums.txt — refusing to install"
+            error "checksum for release/${ASSET_NAME} not found in checksums.txt — refusing to install"
         fi
         # sha256sum (Linux GNU) vs shasum -a 256 (macOS) — prefer whichever is available.
         if command -v sha256sum >/dev/null 2>&1; then
@@ -128,18 +131,8 @@ install() {
         info "Checksum verified."
     fi
 
-    # Verify archive contents before extraction (CWE-22 path traversal).
-    # Reject any entry with an absolute path or a ".." component.
-    info "Verifying archive contents..."
-    if tar -tzf "$ARCHIVE" | grep -qE '^/|(^|/)\.\.(/|$)'; then
-        error "Archive contains unsafe paths (absolute or directory traversal) — refusing to extract"
-    fi
-
-    info "Extracting..."
-    tar -xzf "$ARCHIVE" -C "$TEMP_DIR"
-
     mkdir -p "$INSTALL_DIR"
-    mv "${TEMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/"
+    mv "${TEMP_DIR}/${BINARY_NAME}-${TARGET}" "${INSTALL_DIR}/${BINARY_NAME}"
 
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 

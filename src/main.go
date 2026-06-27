@@ -25,6 +25,8 @@ func ParseArgs(args []string) (Config, error) {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
+		case "--version":
+			cfg.Version = true
 		case "--to-md":
 			cfg.ToMd = true
 		case "--to-sh":
@@ -75,6 +77,11 @@ func main() {
 		fmt.Printf("Error: %v\n", err)
 		printUsage(Version)
 		os.Exit(1)
+	}
+
+	if cfg.Version {
+		fmt.Printf("runbook version: %s\n", Version)
+		return
 	}
 
 	if cfg.FromMd {
