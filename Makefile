@@ -1,5 +1,5 @@
 OUTPUT ?= runbook
-SEMVER ?= 1.1.0
+SEMVER ?= 1.1.1
 VERSION := $(SEMVER)-dev
 LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
 
