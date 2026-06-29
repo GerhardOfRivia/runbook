@@ -89,6 +89,9 @@ type TuiModel struct {
 	err                     error
 	statusMessage           string
 	unsavedChanges          bool
+	searching               bool
+	searchInput             textinput.Model
+	searchQuery             string
 }
 
 // NewTuiModel initializes a new TuiModel.
@@ -106,6 +109,9 @@ func NewTuiModel(nb *Notebook, filepath string) *TuiModel {
 	ti.EchoMode = textinput.EchoPassword
 	ti.Focus()
 
+	si := textinput.New()
+	si.Prompt = "/"
+
 	return &TuiModel{
 		notebook:                nb,
 		filepath:                filepath,
@@ -117,6 +123,7 @@ func NewTuiModel(nb *Notebook, filepath string) *TuiModel {
 		confirmingSudoCellIndex: -1,
 		enteringPasswordCellIdx: -1,
 		passwordInput:           ti,
+		searchInput:             si,
 		nextExecutionCount:      maxCount + 1,
 		statusMessage:           "Ready",
 	}
@@ -222,6 +229,26 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.searching {
+			switch msg.String() {
+			case "enter":
+				m.searchQuery = m.searchInput.Value()
+				m.searching = false
+				m.searchInput.Blur()
+				m.searchForward(m.activeCellIndex)
+				return m, nil
+			case "esc", "ctrl+c":
+				m.searching = false
+				m.searchInput.Blur()
+				m.statusMessage = "Search cancelled."
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.searchInput, cmd = m.searchInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -236,6 +263,28 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeCellIndex < len(m.notebook.Cells)-1 {
 				m.activeCellIndex++
 			}
+			return m, nil
+
+		case "/":
+			m.searching = true
+			m.searchInput.SetValue("")
+			m.searchInput.Focus()
+			return m, textinput.Blink
+
+		case "n":
+			if m.searchQuery == "" {
+				m.statusMessage = "No search pattern"
+				return m, nil
+			}
+			m.searchForward(m.activeCellIndex + 1)
+			return m, nil
+
+		case "N":
+			if m.searchQuery == "" {
+				m.statusMessage = "No search pattern"
+				return m, nil
+			}
+			m.searchBackward(m.activeCellIndex - 1)
 			return m, nil
 
 		case "enter", "r":
@@ -422,13 +471,18 @@ func (m TuiModel) View() string {
 		statusBar = sudoConfirmStatusStyle.Width(m.terminalWidth).Render(promptText)
 	} else if m.confirmingSudoCellIndex != -1 {
 		statusBar = sudoConfirmStatusStyle.Width(m.terminalWidth).Render(statusText)
+	} else if m.searching {
+		promptText := fmt.Sprintf(" %s", m.searchInput.View())
+		statusBar = statusBarStyle.Width(m.terminalWidth).Render(promptText)
 	} else {
 		statusBar = statusBarStyle.Width(m.terminalWidth).Render(statusText)
 	}
 
 	// Help Line
-	helpText := " [j/k/↑/↓] Navigate • [Enter/r] Run • [s/ctrl+s] Save • [q] Quit"
-	if m.enteringPasswordCellIdx != -1 {
+	helpText := " [j/k/↑/↓] Navigate • [/] Search • [n/N] Next/Prev • [Enter/r] Run • [s/ctrl+s] Save • [q] Quit"
+	if m.searching {
+		helpText = " [Enter] Search • [Esc] Cancel"
+	} else if m.enteringPasswordCellIdx != -1 {
 		helpText = " [Enter] Submit • [Esc] Cancel"
 	} else if m.confirmingSudoCellIndex != -1 {
 		helpText = " [y] Run command with sudo • [n/esc] Cancel • [q] Quit"
@@ -583,5 +637,98 @@ func hasSudo(code string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func cellMatches(cell Cell, query string) bool {
+	if query == "" {
+		return false
+	}
+	q := strings.ToLower(query)
+	if strings.Contains(strings.ToLower(cell.Source.String()), q) {
+		return true
+	}
+	for _, out := range cell.Outputs {
+		if out.OutputType == "stream" {
+			if strings.Contains(strings.ToLower(out.Text.String()), q) {
+				return true
+			}
+		} else if out.OutputType == "error" {
+			if strings.Contains(strings.ToLower(out.EName), q) ||
+				strings.Contains(strings.ToLower(out.EValue), q) {
+				return true
+			}
+			for _, tb := range out.Traceback {
+				if strings.Contains(strings.ToLower(tb), q) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (m *TuiModel) getMatchInfo() (currMatch int, totalMatches int) {
+	if m.searchQuery == "" {
+		return 0, 0
+	}
+	for i, cell := range m.notebook.Cells {
+		if cellMatches(cell, m.searchQuery) {
+			totalMatches++
+			if i == m.activeCellIndex {
+				currMatch = totalMatches
+			}
+		}
+	}
+	return currMatch, totalMatches
+}
+
+func (m *TuiModel) searchForward(startIdx int) bool {
+	if m.searchQuery == "" {
+		return false
+	}
+	nCells := len(m.notebook.Cells)
+	if nCells == 0 {
+		return false
+	}
+
+	// Normalize startIdx to be within bounds
+	startIdx = (startIdx%nCells + nCells) % nCells
+
+	for i := 0; i < nCells; i++ {
+		idx := (startIdx + i) % nCells
+		if cellMatches(m.notebook.Cells[idx], m.searchQuery) {
+			m.activeCellIndex = idx
+			curr, total := m.getMatchInfo()
+			m.statusMessage = fmt.Sprintf("Found match in cell %d (match %d/%d): %q", idx+1, curr, total, m.searchQuery)
+			return true
+		}
+	}
+	m.statusMessage = fmt.Sprintf("Pattern not found: %s", m.searchQuery)
+	return false
+}
+
+func (m *TuiModel) searchBackward(startIdx int) bool {
+	if m.searchQuery == "" {
+		return false
+	}
+	nCells := len(m.notebook.Cells)
+	if nCells == 0 {
+		return false
+	}
+
+	// Normalize startIdx to be within bounds
+	startIdx = (startIdx%nCells + nCells) % nCells
+
+	for i := 0; i < nCells; i++ {
+		idx := (startIdx - i + nCells) % nCells
+		if cellMatches(m.notebook.Cells[idx], m.searchQuery) {
+			m.activeCellIndex = idx
+			curr, total := m.getMatchInfo()
+			m.statusMessage = fmt.Sprintf("Found match in cell %d (match %d/%d): %q", idx+1, curr, total, m.searchQuery)
+			return true
+		}
+	}
+	m.statusMessage = fmt.Sprintf("Pattern not found: %s", m.searchQuery)
 	return false
 }
