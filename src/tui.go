@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -92,6 +95,9 @@ type TuiModel struct {
 	searching               bool
 	searchInput             textinput.Model
 	searchQuery             string
+	enteringCommand         bool
+	commandInput            textinput.Model
+	workingDir              string
 }
 
 // NewTuiModel initializes a new TuiModel.
@@ -112,6 +118,11 @@ func NewTuiModel(nb *Notebook, filepath string) *TuiModel {
 	si := textinput.New()
 	si.Prompt = "/"
 
+	ci := textinput.New()
+	ci.Prompt = "!"
+
+	wd, _ := os.Getwd()
+
 	return &TuiModel{
 		notebook:                nb,
 		filepath:                filepath,
@@ -124,8 +135,10 @@ func NewTuiModel(nb *Notebook, filepath string) *TuiModel {
 		enteringPasswordCellIdx: -1,
 		passwordInput:           ti,
 		searchInput:             si,
+		commandInput:            ci,
 		nextExecutionCount:      maxCount + 1,
 		statusMessage:           "Ready",
+		workingDir:              wd,
 	}
 }
 
@@ -249,6 +262,30 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.enteringCommand {
+			switch msg.String() {
+			case "enter":
+				cmdStr := m.commandInput.Value()
+				m.enteringCommand = false
+				m.commandInput.Blur()
+				if cmdStr == "" {
+					m.statusMessage = "Empty command ignored."
+					return m, nil
+				}
+				m.statusMessage = fmt.Sprintf("Running command: %s", cmdStr)
+				return m, runCommandTUI(cmdStr)
+			case "esc", "ctrl+c":
+				m.enteringCommand = false
+				m.commandInput.Blur()
+				m.statusMessage = "Command execution cancelled."
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.commandInput, cmd = m.commandInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -269,6 +306,12 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searching = true
 			m.searchInput.SetValue("")
 			m.searchInput.Focus()
+			return m, textinput.Blink
+
+		case "!":
+			m.enteringCommand = true
+			m.commandInput.SetValue("")
+			m.commandInput.Focus()
 			return m, textinput.Blink
 
 		case "n":
@@ -363,6 +406,14 @@ func (m TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMessage = fmt.Sprintf("Cell %d finished successfully in %s", idx+1, durationStr)
 		}
 		return m, nil
+
+	case MsgCommandFinished:
+		if msg.Err != nil {
+			m.statusMessage = fmt.Sprintf("Command failed: %v", msg.Err)
+		} else {
+			m.statusMessage = "Command finished successfully"
+		}
+		return m, tea.ClearScreen
 	}
 
 	return m, nil
@@ -375,7 +426,8 @@ func (m TuiModel) View() string {
 	if m.unsavedChanges {
 		changedIndicator = " [modified]"
 	}
-	headerText := fmt.Sprintf("RUNBOOK: %s%s", m.filepath, changedIndicator)
+	runbookAbsolutePath, _ := filepath.Abs(m.filepath)
+	headerText := fmt.Sprintf("runbook: %s%s pwd: %s", shortenPath(runbookAbsolutePath), changedIndicator, shortenPath(m.workingDir))
 	header := titleStyle.Width(m.terminalWidth).Render(headerText)
 
 	// Viewport heights
@@ -397,7 +449,7 @@ func (m TuiModel) View() string {
 
 		var cellStr string
 		if cell.CellType == "code" {
-			cellStr = renderCodeCell(cell, isActive, m.terminalWidth, isExecuting)
+			cellStr = renderCodeCell(cell, isActive, m.terminalWidth, isExecuting, m.workingDir)
 		} else {
 			cellStr = renderMarkdownCell(cell, isActive, m.terminalWidth)
 		}
@@ -463,25 +515,30 @@ func (m TuiModel) View() string {
 	viewportContent := strings.Join(visibleLines, "\n")
 
 	// Status Line
-	cellInfo := fmt.Sprintf("Cell %d of %d", m.activeCellIndex+1, len(m.notebook.Cells))
+	cellInfo := fmt.Sprintf("cell %d of %d", m.activeCellIndex+1, len(m.notebook.Cells))
 	statusText := fmt.Sprintf(" %-50s %29s", m.statusMessage, cellInfo)
 	var statusBar string
 	if m.enteringPasswordCellIdx != -1 {
-		promptText := fmt.Sprintf(" Sudo Password: %s", m.passwordInput.View())
+		promptText := fmt.Sprintf(" sudo password: %s", m.passwordInput.View())
 		statusBar = sudoConfirmStatusStyle.Width(m.terminalWidth).Render(promptText)
 	} else if m.confirmingSudoCellIndex != -1 {
 		statusBar = sudoConfirmStatusStyle.Width(m.terminalWidth).Render(statusText)
 	} else if m.searching {
 		promptText := fmt.Sprintf(" %s", m.searchInput.View())
 		statusBar = statusBarStyle.Width(m.terminalWidth).Render(promptText)
+	} else if m.enteringCommand {
+		promptText := fmt.Sprintf(" %s", m.commandInput.View())
+		statusBar = statusBarStyle.Width(m.terminalWidth).Render(promptText)
 	} else {
 		statusBar = statusBarStyle.Width(m.terminalWidth).Render(statusText)
 	}
 
 	// Help Line
-	helpText := " [j/k/↑/↓] Navigate • [/] Search • [n/N] Next/Prev • [Enter/r] Run • [s/ctrl+s] Save • [q] Quit"
+	helpText := " [j/k/↑/↓] Navigate • [/] Search • [!] Command • [n/N] Next/Prev • [Enter/r] Run • [s/ctrl+s] Save • [q] Quit"
 	if m.searching {
 		helpText = " [Enter] Search • [Esc] Cancel"
+	} else if m.enteringCommand {
+		helpText = " [Enter] Run command • [Esc] Cancel"
 	} else if m.enteringPasswordCellIdx != -1 {
 		helpText = " [Enter] Submit • [Esc] Cancel"
 	} else if m.confirmingSudoCellIndex != -1 {
@@ -495,8 +552,9 @@ func (m TuiModel) View() string {
 	return header + "\n" + viewportContent + "\n" + statusBar + "\n" + helpBar
 }
 
-func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) string {
-	var durationInfo string
+func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool, workingDir string) string {
+	var durationStr string
+	var lastRunInfo string
 	if cell.Metadata != nil {
 		if startVal, ok := cell.Metadata["start_time"]; ok {
 			if endVal, ok := cell.Metadata["end_time"]; ok {
@@ -504,7 +562,12 @@ func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) strin
 					if endStr, ok := endVal.(string); ok {
 						if startTime, err := time.Parse(time.RFC3339Nano, startStr); err == nil {
 							if endTime, err := time.Parse(time.RFC3339Nano, endStr); err == nil {
-								durationInfo = " (" + formatDuration(endTime.Sub(startTime)) + ")"
+								durationStr = formatDuration(endTime.Sub(startTime))
+								if endTime.After(time.Now().AddDate(0, 0, -1)) {
+									lastRunInfo = endTime.Format("15:04:05")
+								} else {
+									lastRunInfo = endTime.Format("2006-01-02 15:04:05")
+								}
 							}
 						}
 					}
@@ -527,7 +590,7 @@ func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) strin
 	} else if cell.ExecutionCount == nil {
 		prompt = fmt.Sprintf("In [ ] (%s): ", lang)
 	} else {
-		prompt = fmt.Sprintf("In [%d] (%s)%s: ", *cell.ExecutionCount, lang, durationInfo)
+		prompt = fmt.Sprintf("In [%d] (%s): ", *cell.ExecutionCount, lang)
 	}
 
 	// Indent code lines and add prompt prefix
@@ -569,7 +632,24 @@ func renderCodeCell(cell Cell, isActive bool, width int, isExecuting bool) strin
 		}
 		if len(outputLines) > 0 {
 			borderStyle := lipgloss.NewStyle().Foreground(subtleColor)
-			outputsStr = "\n" + borderStyle.Render("── Outputs ──") + "\n" + strings.Join(outputLines, "\n")
+			var parts []string
+			if lastRunInfo != "" {
+				parts = append(parts, lastRunInfo)
+			}
+			if durationStr != "" {
+				parts = append(parts, durationStr)
+			}
+			parts = append(parts, shortenPath(workingDir))
+			langSymbol := "$"
+			if (cell.Metadata != nil && cell.Metadata["sudo"] == true) && (lang == "bash" || lang == "sh" || lang == "shell") {
+				langSymbol = "#"
+			} else if lang == "bash" || lang == "sh" || lang == "shell" {
+				langSymbol = "$"
+			} else if lang == "powershell" || lang == "pwsh" {
+				langSymbol = ">"
+			}
+			header := borderStyle.Render(fmt.Sprintf("[%s] %s ", strings.Join(parts, " • "), langSymbol))
+			outputsStr = "\n" + header + "\n" + strings.Join(outputLines, "\n")
 		}
 	}
 
@@ -731,4 +811,25 @@ func (m *TuiModel) searchBackward(startIdx int) bool {
 	}
 	m.statusMessage = fmt.Sprintf("Pattern not found: %s", m.searchQuery)
 	return false
+}
+
+// MsgCommandFinished is sent when an external command finishes.
+type MsgCommandFinished struct {
+	Err error
+}
+
+func runCommandTUI(command string) tea.Cmd {
+	wrapped := fmt.Sprintf("%s\n\necho\necho 'Press Enter to return to Runbook...'\nread", command)
+	c := exec.Command("bash", "-c", wrapped)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return MsgCommandFinished{Err: err}
+	})
+}
+
+func shortenPath(path string) string {
+	home, err := os.UserHomeDir()
+	if err == nil && strings.HasPrefix(path, home) {
+		return "~" + strings.TrimPrefix(path, home)
+	}
+	return path
 }

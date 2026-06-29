@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -291,6 +293,121 @@ func TestTuiSearchKeys(t *testing.T) {
 	m = &mVal
 	if m.statusMessage != "No search pattern" {
 		t.Errorf("Expected status 'No search pattern', got %q", m.statusMessage)
+	}
+}
+
+func TestTuiCommandKeys(t *testing.T) {
+	nb := &Notebook{
+		Cells: []Cell{
+			{
+				CellType: "markdown",
+				Source:   StringOrArray{"First cell with apple"},
+			},
+		},
+	}
+	m := NewTuiModel(nb, "dummy.shbn")
+
+	// 1. Trigger command mode
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'!'}})
+	mVal := model.(TuiModel)
+	m = &mVal
+	if !m.enteringCommand {
+		t.Error("Expected enteringCommand to be true after '!' key")
+	}
+	_ = cmd
+
+	// 2. Type command "ls"
+	for _, r := range "ls" {
+		model, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		mVal = model.(TuiModel)
+		m = &mVal
+	}
+
+	if m.commandInput.Value() != "ls" {
+		t.Errorf("Expected command input value to be 'ls', got %q", m.commandInput.Value())
+	}
+
+	// 3. Press Enter to submit the command
+	model, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mVal = model.(TuiModel)
+	m = &mVal
+
+	if m.enteringCommand {
+		t.Error("Expected enteringCommand to be false after Enter")
+	}
+	if cmd == nil {
+		t.Error("Expected a command to be returned on Enter")
+	}
+
+	// 4. Test MsgCommandFinished with no error
+	model, cmd = m.Update(MsgCommandFinished{Err: nil})
+	mVal = model.(TuiModel)
+	m = &mVal
+	if m.statusMessage != "Command finished successfully" {
+		t.Errorf("Expected status message to be 'Command finished successfully', got %q", m.statusMessage)
+	}
+	if cmd == nil {
+		t.Error("Expected tea.ClearScreen to be returned after MsgCommandFinished")
+	}
+
+	// 5. Test MsgCommandFinished with error
+	model, cmd = m.Update(MsgCommandFinished{Err: fmt.Errorf("some error")})
+	mVal = model.(TuiModel)
+	m = &mVal
+	if m.statusMessage != "Command failed: some error" {
+		t.Errorf("Expected status message to be 'Command failed: some error', got %q", m.statusMessage)
+	}
+
+	// 6. Test cancellation with Esc
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'!'}})
+	mVal = model.(TuiModel)
+	m = &mVal
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	mVal = model.(TuiModel)
+	m = &mVal
+	if m.enteringCommand {
+		t.Error("Expected enteringCommand to be false after Esc")
+	}
+	if m.statusMessage != "Command execution cancelled." {
+		t.Errorf("Expected status 'Command execution cancelled.', got %q", m.statusMessage)
+	}
+}
+
+func TestShortenPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("Skipping TestShortenPath: UserHomeDir not available")
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "Home directory exactly",
+			path: home,
+			want: "~",
+		},
+		{
+			name: "Subdirectory of home",
+			path: home + "/git/runbook",
+			want: "~/git/runbook",
+		},
+		{
+			name: "Path outside home",
+			path: "/tmp/runbook-test",
+			want: "/tmp/runbook-test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shortenPath(tt.path)
+			if got != tt.want {
+				t.Errorf("shortenPath(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
 	}
 }
 
